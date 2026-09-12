@@ -160,7 +160,7 @@ def obtener_encabezado_pdf(styles):
         ],
         [
             Paragraph(f"<b>Curso/Materia:</b> {st.session_state.alumno_curso}", style_header_label),
-            Paragraph("Sistema de Practicantes Contables", style_header_right)
+            Paragraph("Sistema de Practicas Contables", style_header_right)
         ]
     ]
 
