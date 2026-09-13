@@ -13,8 +13,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 # Configuración de la página
 st.set_page_config(page_title="App Educativa de Contabilidad", layout="wide")
 
-st.title("📚 Sistema Contable Educativo")
-st.write("Herramienta pedagógica para registración manual, gestión de padrones y valuación de inventarios por PPP.")
+st.title("📚 Sistema Contable Educativo con Auditoría")
+st.write("Herramienta pedagógica para registración manual, gestión de padrones, valuación de inventarios por PPP y Hoja de Trabajo (8 Columnas).")
 
 # ==========================================
 # INICIALIZACIÓN DE ESTADOS (SESSION STATE)
@@ -31,13 +31,20 @@ def inicializar_estados():
             "1.1.01 Caja",
             "1.1.02 Banco Nación c/c",
             "1.2.01 Deudores por Ventas (Clientes)",
+            "1.2.02 Deudores Morosos",
+            "1.2.03 Deudores Incobrables",
             "1.3.01 Mercaderías (Stock)",
+            "1.4.01 Muebles y Útiles",
+            "1.4.02 Depreciación Acumulada Muebles y Útiles",
             "2.1.01 Proveedores",
             "2.1.02 Obligaciones a Pagar",
             "3.1.01 Capital Social",
             "4.1.01 Ventas",
+            "4.2.01 Sobrante de Caja",
             "5.1.01 Costo de Mercaderías Vendidas (CMV)",
-            "5.1.02 Gastos Generales"
+            "5.1.02 Gastos Generales",
+            "5.2.01 Faltante de Caja",
+            "5.2.02 Depreciación Muebles y Útiles"
         ]
 
     if "padron_terceros" not in st.session_state:
@@ -160,7 +167,7 @@ def obtener_encabezado_pdf(styles):
         ],
         [
             Paragraph(f"<b>Curso/Materia:</b> {st.session_state.alumno_curso}", style_header_label),
-            Paragraph("Sistema de Practicas Contables", style_header_right)
+            Paragraph("Sistema de Practicantes Contables", style_header_right)
         ]
     ]
 
@@ -201,8 +208,9 @@ def generar_pdf_libro_diario(asientos):
     data = [headers]
 
     for a in asientos:
+        tipo_asiento_tag = f" [{a.get('Tipo_Asiento', 'Normal')}]" if a.get('Tipo_Asiento') == 'Ajuste de Auditoría' else ""
         data.append([
-            Paragraph(f"<b>Asiento N° {a['Asiento']}</b><br/>{a['Fecha']}", style_normal),
+            Paragraph(f"<b>Asiento N° {a['Asiento']}</b>{tipo_asiento_tag}<br/>{a['Fecha']}", style_normal),
             Paragraph(f"<b>Operación:</b> {a['Operación']}", style_normal),
             "", ""
         ])
@@ -248,7 +256,7 @@ def generar_pdf_tabla_generica(titulo, df, orientacion="portrait"):
     styles = getSampleStyleSheet()
     
     style_title = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=14, alignment=1, spaceAfter=12)
-    style_cell = ParagraphStyle('Cell', parent=styles['Normal'], fontName='Helvetica', fontSize=8)
+    style_cell = ParagraphStyle('Cell', parent=styles['Normal'], fontName='Helvetica', fontSize=7)
     style_header = ParagraphStyle('Header', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, alignment=1, textColor=colors.white)
 
     elements = []
@@ -275,8 +283,8 @@ def generar_pdf_tabla_generica(titulo, df, orientacion="portrait"):
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94A3B8')),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
     ]))
 
     elements.append(table)
@@ -294,7 +302,8 @@ menu = st.sidebar.radio(
         "2. Carga de Asientos (Libro Diario)",
         "3. Libro Mayor y Submayores",
         "4. Ficha de Stock PPP",
-        "5. Sumas y Saldos"
+        "5. Sumas y Saldos",
+        "6. Auditoría y Prebalance (8 Columnas)"
     ]
 )
 
@@ -405,10 +414,11 @@ elif menu == "2. Carga de Asientos (Libro Diario)":
     lista_articulos = [a["Nombre"] for a in st.session_state.padron_articulos]
 
     st.subheader("📄 Datos del Comprobante y Operación")
-    col_op1, col_op2, col_op3 = st.columns(3)
+    col_op1, col_op2, col_op3, col_op4 = st.columns([1.5, 2, 2, 2.5])
     fecha = col_op1.date_input("Fecha de operación")
-    tipo_operacion = col_op2.selectbox("Tipo de Operación", ["Compra", "Venta", "Cobro", "Pago", "Otra Operación"])
-    concepto = col_op3.text_input("Comprobante / Detalle", placeholder="Ej: Factura A N° 0001-00000123")
+    tipo_asiento = col_op2.selectbox("Naturaleza del Asiento", ["Normal (Operativo)", "Ajuste de Auditoría"])
+    tipo_operacion = col_op3.selectbox("Tipo de Operación", ["Compra", "Venta", "Cobro", "Pago", "Ajuste Contable", "Otra Operación"])
+    concepto = col_op4.text_input("Comprobante / Detalle", placeholder="Ej: Factura A N° 0001-00000123 / Faltante de Caja")
 
     tercero_operacion = "N/A"
     if tipo_operacion in ["Venta", "Cobro"]:
@@ -506,6 +516,7 @@ elif menu == "2. Carga de Asientos (Libro Diario)":
                 asiento_obj = {
                     "Asiento": num_asiento,
                     "Fecha": fecha,
+                    "Tipo_Asiento": tipo_asiento,
                     "Operación": tipo_operacion,
                     "Concepto": concepto,
                     "Tercero": tercero_operacion,
@@ -595,7 +606,8 @@ elif menu == "2. Carga de Asientos (Libro Diario)":
 
         for asito in st.session_state.libro_diario:
             with st.container():
-                st.markdown(f"**------------------- Asiento N° {asito['Asiento']} ({asito['Fecha']}) -------------------**")
+                badge_ajuste = " 🛠️ *(Ajuste de Auditoría)*" if asito.get("Tipo_Asiento") == "Ajuste de Auditoría" else ""
+                st.markdown(f"**------------------- Asiento N° {asito['Asiento']} ({asito['Fecha']}){badge_ajuste} -------------------**")
                 
                 for renglon in asito["Renglones"]:
                     if renglon["Tipo"] == "Debe":
@@ -637,6 +649,7 @@ elif menu == "3. Libro Mayor y Submayores":
                         renglones_flat.append({
                             "Asiento": a["Asiento"],
                             "Fecha": a["Fecha"],
+                            "Tipo": a.get("Tipo_Asiento", "Normal (Operativo)"),
                             "Operación": a["Operación"],
                             "Concepto": a["Concepto"],
                             "Tercero": a["Tercero"],
@@ -768,7 +781,7 @@ elif menu == "4. Ficha de Stock PPP":
 # MÓDULO 5: BALANCE DE SUMAS Y SALDOS
 # ==========================================
 elif menu == "5. Sumas y Saldos":
-    st.header("⚖️ Balance de Comprobación de Sumas y Saldos")
+    st.header("⚖️ Balance de Comprobación de Sumas y Saldos (Pre-Ajustes)")
 
     if st.session_state.libro_diario:
         resumen = []
@@ -776,13 +789,15 @@ elif menu == "5. Sumas y Saldos":
         for cuenta in st.session_state.plan_cuentas:
             debe = 0.0
             haber = 0.0
+            # Solo computamos asientos normales/operativos para el balance previo
             for a in st.session_state.libro_diario:
-                for r in a["Renglones"]:
-                    if r["Cuenta"] == cuenta:
-                        if r["Tipo"] == "Debe":
-                            debe += r["Monto"]
-                        else:
-                            haber += r["Monto"]
+                if a.get("Tipo_Asiento", "Normal (Operativo)") != "Ajuste de Auditoría":
+                    for r in a["Renglones"]:
+                        if r["Cuenta"] == cuenta:
+                            if r["Tipo"] == "Debe":
+                                debe += r["Monto"]
+                            else:
+                                haber += r["Monto"]
 
             if debe > 0 or haber > 0:
                 resumen.append({
@@ -807,5 +822,110 @@ elif menu == "5. Sumas y Saldos":
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Total Debe", f"${df_resumen['Sumas Debe'].sum():,.2f}")
             c2.metric("Total Haber", f"${df_resumen['Sumas Haber'].sum():,.2f}")
-            c3.metric("Total Acreedor", f"${df_resumen['Saldo Acreedor'].sum():,.2f}")
-            c4.metric("Total Deudor", f"${df_resumen['Saldo Deudor'].sum():,.2f}")
+            c3.metric("Total Deudor", f"${df_resumen['Saldo Deudor'].sum():,.2f}")
+            c4.metric("Total Acreedor", f"${df_resumen['Saldo Acreedor'].sum():,.2f}")
+        else:
+            st.info("Sin registros en operaciones ordinarias.")
+    else:
+        st.info("Sin asientos registrados en el Libro Diario.")
+
+# ==========================================
+# MÓDULO 6: AUDITORÍA Y HOJA DE TRABAJO (8 COLUMNAS)
+# ==========================================
+elif menu == "6. Auditoría y Prebalance (8 Columnas)":
+    st.header("🔍 Módulo de Auditoría: Hoja de Trabajo / Balance de 8 Columnas")
+    st.write("Visualización sistemática del proceso de ajuste contable y determinación de Saldos Ajustados.")
+
+    if st.session_state.libro_diario:
+        filas_prebalance = []
+
+        for cuenta in st.session_state.plan_cuentas:
+            s_debe = 0.0
+            s_haber = 0.0
+            a_debe = 0.0
+            a_haber = 0.0
+
+            for asiento in st.session_state.libro_diario:
+                es_ajuste = asiento.get("Tipo_Asiento") == "Ajuste de Auditoría"
+                for renglon in asiento["Renglones"]:
+                    if renglon["Cuenta"] == cuenta:
+                        if not es_ajuste:
+                            if renglon["Tipo"] == "Debe":
+                                s_debe += renglon["Monto"]
+                            else:
+                                s_haber += renglon["Monto"]
+                        else:
+                            if renglon["Tipo"] == "Debe":
+                                a_debe += renglon["Monto"]
+                            else:
+                                a_haber += renglon["Monto"]
+
+            # Calculamos si la cuenta tuvo algún tipo de movimiento
+            if (s_debe + s_haber + a_debe + a_haber) > 0:
+                saldo_orig = s_debe - s_haber
+                sal_or_deudor = saldo_orig if saldo_orig > 0 else 0.0
+                sal_or_acreedor = abs(saldo_orig) if saldo_orig < 0 else 0.0
+
+                saldo_final = (s_debe + a_debe) - (s_haber + a_haber)
+                sal_aj_deudor = saldo_final if saldo_final > 0 else 0.0
+                sal_aj_acreedor = abs(saldo_final) if saldo_final < 0 else 0.0
+
+                filas_prebalance.append({
+                    "Cuenta": cuenta,
+                    "1. Suma Debe": s_debe,
+                    "2. Suma Haber": s_haber,
+                    "3. Saldo Deudor": sal_or_deudor,
+                    "4. Saldo Acreedor": sal_or_acreedor,
+                    "5. Ajuste Debe": a_debe,
+                    "6. Ajuste Haber": a_haber,
+                    "7. Saldo Ajustado Deudor": sal_aj_deudor,
+                    "8. Saldo Ajustado Acreedor": sal_aj_acreedor
+                })
+
+        if filas_prebalance:
+            df_8col = pd.DataFrame(filas_prebalance)
+
+            # Preparar la tabla visual estructurada en 8 columnas
+            col_a1, col_a2 = st.columns([3, 1])
+            col_a1.subheader("📋 Prebalance de 8 Columnas")
+
+            pdf_8col = generar_pdf_tabla_generica("PREBALANCE DE AUDITORIA - 8 COLUMNAS", df_8col, orientacion="landscape")
+            col_a2.download_button("📄 Exportar Hoja 8 Col. (PDF)", pdf_8col, "Hoja_Trabajo_8_Columnas.pdf", "application/pdf")
+
+            # Formatear la visualización en pantalla de forma limpia
+            st.dataframe(
+                df_8col.style.format({
+                    "1. Suma Debe": "${:,.2f}",
+                    "2. Suma Haber": "${:,.2f}",
+                    "3. Saldo Deudor": "${:,.2f}",
+                    "4. Saldo Acreedor": "${:,.2f}",
+                    "5. Ajuste Debe": "${:,.2f}",
+                    "6. Ajuste Haber": "${:,.2f}",
+                    "7. Saldo Ajustado Deudor": "${:,.2f}",
+                    "8. Saldo Ajustado Acreedor": "${:,.2f}"
+                }),
+                use_container_width=True
+            )
+
+            st.divider()
+            st.subheader("📊 Totales y Verificación de Cuadres")
+
+            tot_s_debe = df_8col["1. Suma Debe"].sum()
+            tot_s_haber = df_8col["2. Suma Haber"].sum()
+            tot_sal_deu = df_8col["3. Saldo Deudor"].sum()
+            tot_sal_acr = df_8col["4. Saldo Acreedor"].sum()
+            tot_aj_debe = df_8col["5. Ajuste Debe"].sum()
+            tot_aj_haber = df_8col["6. Ajuste Haber"].sum()
+            tot_aj_sal_deu = df_8col["7. Saldo Ajustado Deudor"].sum()
+            tot_aj_sal_acr = df_8col["8. Saldo Ajustado Acreedor"].sum()
+
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            mc1.metric("Sumas Originales", f"${tot_s_debe:,.2f}", delta=f"Dif: ${tot_s_debe - tot_s_haber:,.2f}")
+            mc2.metric("Saldos Sin Ajuste", f"${tot_sal_deu:,.2f}", delta=f"Dif: ${tot_sal_deu - tot_sal_acr:,.2f}")
+            mc3.metric("Total Ajustes", f"${tot_aj_debe:,.2f}", delta=f"Dif: ${tot_aj_debe - tot_aj_haber:,.2f}")
+            mc4.metric("Saldos Ajustados", f"${tot_aj_sal_deu:,.2f}", delta=f"Dif: ${tot_aj_sal_deu - tot_aj_sal_acr:,.2f}")
+
+        else:
+            st.info("No hay movimientos contables registrados para generar la Hoja de Trabajo.")
+    else:
+        st.info("Sin asientos registrados en el Libro Diario.")
