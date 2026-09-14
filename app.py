@@ -63,6 +63,9 @@ def inicializar_estados():
             "Stock_Fisico": [],
             "Stock_Valorizado": {}
         }
+    
+    if "asiento_key" not in st.session_state:
+        st.session_state.asiento_key = 0
 
 inicializar_estados()
 
@@ -348,10 +351,21 @@ if menu == "1. Padrones y Plan de Cuentas":
                         "Condicion": condicion_pago
                     })
                     st.success(f"{tipo_tercero} '{nombre}' registrado correctamente.")
+                    st.rerun()
 
-        st.subheader("📋 Padrón Registrado")
+        st.subheader("📋 Padrón Registrado (Modificable)")
         if st.session_state.padron_terceros:
-            st.dataframe(pd.DataFrame(st.session_state.padron_terceros), use_container_width=True)
+            df_padron = pd.DataFrame(st.session_state.padron_terceros)
+            edited_padron = st.data_editor(
+                df_padron,
+                num_rows="dynamic",
+                use_container_width=True,
+                key="editor_padron_terceros"
+            )
+            if st.button("💾 Guardar Cambios en Padrón"):
+                st.session_state.padron_terceros = edited_padron.to_dict('records')
+                st.success("Padrón de clientes y proveedores actualizado correctamente.")
+                st.rerun()
         else:
             st.info("Aún no hay clientes o proveedores registrados.")
 
@@ -377,10 +391,21 @@ if menu == "1. Padrones y Plan de Cuentas":
                             "Unidad": um_art
                         })
                         st.success(f"Artículo '{nom_art}' registrado en el inventario.")
+                        st.rerun()
 
-        st.subheader("📋 Catálogo de Artículos Registrados")
+        st.subheader("📋 Catálogo de Artículos Registrados (Modificable)")
         if st.session_state.padron_articulos:
-            st.dataframe(pd.DataFrame(st.session_state.padron_articulos), use_container_width=True)
+            df_articulos = pd.DataFrame(st.session_state.padron_articulos)
+            edited_articulos = st.data_editor(
+                df_articulos,
+                num_rows="dynamic",
+                use_container_width=True,
+                key="editor_padron_articulos"
+            )
+            if st.button("💾 Guardar Cambios en Artículos"):
+                st.session_state.padron_articulos = edited_articulos.to_dict('records')
+                st.success("Padrón de artículos actualizado correctamente.")
+                st.rerun()
         else:
             st.info("Aún no hay artículos registrados en el inventario.")
 
@@ -400,8 +425,22 @@ if menu == "1. Padrones y Plan de Cuentas":
                         st.session_state.plan_cuentas.append(nueva_cuenta_str)
                         st.session_state.plan_cuentas.sort()
                         st.success(f"Cuenta '{nueva_cuenta_str}' agregada.")
+                        st.rerun()
 
-        st.dataframe(pd.DataFrame({"Cuentas Disponibles": st.session_state.plan_cuentas}), use_container_width=True)
+        st.subheader("📋 Plan de Cuentas Actual (Modificable)")
+        df_plan = pd.DataFrame({"Cuentas Disponibles": st.session_state.plan_cuentas})
+        edited_plan = st.data_editor(
+            df_plan,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="editor_plan_cuentas"
+        )
+        if st.button("💾 Guardar Cambios en Plan de Cuentas"):
+            nuevas_cuentas = [c for c in edited_plan["Cuentas Disponibles"].tolist() if c and str(c).strip()]
+            nuevas_cuentas.sort()
+            st.session_state.plan_cuentas = nuevas_cuentas
+            st.success("Plan de cuentas actualizado correctamente.")
+            st.rerun()
 
 # ==========================================
 # MÓDULO 2: LIBRO DIARIO
@@ -449,7 +488,7 @@ elif menu == "2. Carga de Asientos (Libro Diario)":
                 "Cuenta": st.column_config.SelectboxColumn("Cuenta Contable", options=st.session_state.plan_cuentas, required=True),
                 "Monto": st.column_config.NumberColumn("Monto ($)", min_value=0.0, step=100.0, format="$%.2f", required=True)
             },
-            key="editor_debe",
+            key=f"editor_debe_{st.session_state.asiento_key}",
             use_container_width=True
         )
 
@@ -463,7 +502,7 @@ elif menu == "2. Carga de Asientos (Libro Diario)":
                 "Cuenta": st.column_config.SelectboxColumn("Cuenta Contable", options=st.session_state.plan_cuentas, required=True),
                 "Monto": st.column_config.NumberColumn("Monto ($)", min_value=0.0, step=100.0, format="$%.2f", required=True)
             },
-            key="editor_haber",
+            key=f"editor_haber_{st.session_state.asiento_key}",
             use_container_width=True
         )
 
@@ -589,6 +628,7 @@ elif menu == "2. Carga de Asientos (Libro Diario)":
                         "Saldo Cantidad": cant_saldo_n, "Saldo PPP": ppp_n, "Saldo Total": monto_saldo_n
                     })
 
+                st.session_state.asiento_key += 1
                 st.success(f"Asiento N° {num_asiento} registrado con éxito.")
                 st.rerun()
 
@@ -662,10 +702,24 @@ elif menu == "3. Libro Mayor y Submayores":
                 t_debe = df_cuenta["Debe"].sum()
                 t_haber = df_cuenta["Haber"].sum()
                 
-                pdf_mayor = generar_pdf_tabla_generica(f"LIBRO MAYOR: {cuenta_sel}", df_cuenta)
+                df_cuenta_tot = df_cuenta.copy()
+                df_cuenta_tot["Fecha"] = df_cuenta_tot["Fecha"].astype(str)
+                fila_tot = {col: "" for col in df_cuenta_tot.columns}
+                fila_tot["Concepto"] = "TOTALES"
+                fila_tot["Debe"] = t_debe
+                fila_tot["Haber"] = t_haber
+                df_cuenta_tot = pd.concat([df_cuenta_tot, pd.DataFrame([fila_tot])], ignore_index=True)
+
+                pdf_mayor = generar_pdf_tabla_generica(f"LIBRO MAYOR: {cuenta_sel}", df_cuenta_tot)
                 st.download_button("📄 Exportar Mayor (PDF)", pdf_mayor, f"Mayor_{cuenta_sel}.pdf", "application/pdf")
                 
-                st.dataframe(df_cuenta, use_container_width=True)
+                st.dataframe(
+                    df_cuenta_tot.style.format({
+                        "Debe": "${:,.2f}",
+                        "Haber": "${:,.2f}"
+                    }),
+                    use_container_width=True
+                )
 
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Total Debe", f"${t_debe:,.2f}")
@@ -683,11 +737,31 @@ elif menu == "3. Libro Mayor y Submayores":
             df_c = pd.DataFrame(movs_cli)
             df_c["Saldo Acumulado"] = (df_c["Debe (Deuda)"] - df_c["Haber (Pago)"]).cumsum()
 
-            pdf_sub_c = generar_pdf_tabla_generica(f"SUBMAYOR DE CLIENTE: {cliente_sel}", df_c)
+            tot_d = df_c["Debe (Deuda)"].sum()
+            tot_h = df_c["Haber (Pago)"].sum()
+            saldo_f = df_c["Saldo Acumulado"].iloc[-1]
+
+            df_c_tot = df_c.copy()
+            df_c_tot["Fecha"] = df_c_tot["Fecha"].astype(str)
+            fila_tot = {col: "" for col in df_c_tot.columns}
+            fila_tot["Concepto"] = "TOTALES"
+            fila_tot["Debe (Deuda)"] = tot_d
+            fila_tot["Haber (Pago)"] = tot_h
+            fila_tot["Saldo Acumulado"] = saldo_f
+            df_c_tot = pd.concat([df_c_tot, pd.DataFrame([fila_tot])], ignore_index=True)
+
+            pdf_sub_c = generar_pdf_tabla_generica(f"SUBMAYOR DE CLIENTE: {cliente_sel}", df_c_tot)
             st.download_button("📄 Exportar Submayor Cliente (PDF)", pdf_sub_c, f"Submayor_Cliente_{cliente_sel}.pdf", "application/pdf")
 
-            st.dataframe(df_c, use_container_width=True)
-            st.metric("Saldo Pendiente del Cliente", f"${df_c['Saldo Acumulado'].iloc[-1]:,.2f}")
+            st.dataframe(
+                df_c_tot.style.format({
+                    "Debe (Deuda)": "${:,.2f}",
+                    "Haber (Pago)": "${:,.2f}",
+                    "Saldo Acumulado": "${:,.2f}"
+                }),
+                use_container_width=True
+            )
+            st.metric("Saldo Pendiente del Cliente", f"${saldo_f:,.2f}")
         else:
             st.info("Sin registros en submayor de clientes.")
 
@@ -700,20 +774,53 @@ elif menu == "3. Libro Mayor y Submayores":
             df_p = pd.DataFrame(movs_prov)
             df_p["Saldo Acumulado"] = (df_p["Haber (Deuda)"] - df_p["Debe (Pago)"]).cumsum()
 
-            pdf_sub_p = generar_pdf_tabla_generica(f"SUBMAYOR DE PROVEEDOR: {prov_sel}", df_p)
+            tot_d = df_p["Debe (Pago)"].sum()
+            tot_h = df_p["Haber (Deuda)"].sum()
+            saldo_f = df_p["Saldo Acumulado"].iloc[-1]
+
+            df_p_tot = df_p.copy()
+            df_p_tot["Fecha"] = df_p_tot["Fecha"].astype(str)
+            fila_tot = {col: "" for col in df_p_tot.columns}
+            fila_tot["Concepto"] = "TOTALES"
+            fila_tot["Debe (Pago)"] = tot_d
+            fila_tot["Haber (Deuda)"] = tot_h
+            fila_tot["Saldo Acumulado"] = saldo_f
+            df_p_tot = pd.concat([df_p_tot, pd.DataFrame([fila_tot])], ignore_index=True)
+
+            pdf_sub_p = generar_pdf_tabla_generica(f"SUBMAYOR DE PROVEEDOR: {prov_sel}", df_p_tot)
             st.download_button("📄 Exportar Submayor Proveedor (PDF)", pdf_sub_p, f"Submayor_Proveedor_{prov_sel}.pdf", "application/pdf")
 
-            st.dataframe(df_p, use_container_width=True)
-            st.metric("Saldo Deuda con Proveedor", f"${df_p['Saldo Acumulado'].iloc[-1]:,.2f}")
+            st.dataframe(
+                df_p_tot.style.format({
+                    "Debe (Pago)": "${:,.2f}",
+                    "Haber (Deuda)": "${:,.2f}",
+                    "Saldo Acumulado": "${:,.2f}"
+                }),
+                use_container_width=True
+            )
+            st.metric("Saldo Deuda con Proveedor", f"${saldo_f:,.2f}")
         else:
             st.info("Sin registros en submayor de proveedores.")
 
     with tab_sub_stk:
         if st.session_state.submayores["Stock_Fisico"]:
             df_sf = pd.DataFrame(st.session_state.submayores["Stock_Fisico"])
-            pdf_sub_stk = generar_pdf_tabla_generica("SUBMAYOR DE STOCK FISICO", df_sf)
+            tot_e = df_sf["Entrada"].sum()
+            tot_s = df_sf["Salida"].sum()
+            stk_f = df_sf["Stock Final"].iloc[-1]
+
+            df_sf_tot = df_sf.copy()
+            df_sf_tot["Fecha"] = df_sf_tot["Fecha"].astype(str)
+            fila_tot = {col: "" for col in df_sf_tot.columns}
+            fila_tot["Movimiento"] = "TOTALES"
+            fila_tot["Entrada"] = tot_e
+            fila_tot["Salida"] = tot_s
+            fila_tot["Stock Final"] = stk_f
+            df_sf_tot = pd.concat([df_sf_tot, pd.DataFrame([fila_tot])], ignore_index=True)
+
+            pdf_sub_stk = generar_pdf_tabla_generica("SUBMAYOR DE STOCK FISICO", df_sf_tot)
             st.download_button("📄 Exportar Stock Físico (PDF)", pdf_sub_stk, "Stock_Fisico.pdf", "application/pdf")
-            st.dataframe(df_sf, use_container_width=True)
+            st.dataframe(df_sf_tot, use_container_width=True)
         else:
             st.info("Sin registros de movimientos físicos de stock.")
 
@@ -730,8 +837,30 @@ elif menu == "4. Ficha de Stock PPP":
         df_art = pd.DataFrame(fichas[art_sel])
 
         if not df_art.empty:
-            df_display = df_art.copy()
+            tot_e_cant = df_art["E. Cant"].sum()
+            tot_e_monto = df_art["E. Total"].sum()
+            tot_s_cant = df_art["S. Cant"].sum()
+            tot_s_monto = df_art["S. Total"].sum()
             
+            ult_reg = df_art.iloc[-1]
+            tot_saldo_cant = ult_reg["Saldo Cantidad"]
+            tot_saldo_ppp = ult_reg["Saldo PPP"]
+            tot_saldo_monto = ult_reg["Saldo Total"]
+
+            df_art_tot = df_art.copy()
+            df_art_tot["Fecha"] = df_art_tot["Fecha"].astype(str)
+            fila_tot = {col: "" for col in df_art_tot.columns}
+            fila_tot["Concepto"] = "TOTALES"
+            fila_tot["E. Cant"] = tot_e_cant
+            fila_tot["E. Total"] = tot_e_monto
+            fila_tot["S. Cant"] = tot_s_cant
+            fila_tot["S. Total"] = tot_s_monto
+            fila_tot["Saldo Cantidad"] = tot_saldo_cant
+            fila_tot["Saldo PPP"] = tot_saldo_ppp
+            fila_tot["Saldo Total"] = tot_saldo_monto
+            df_art_tot = pd.concat([df_art_tot, pd.DataFrame([fila_tot])], ignore_index=True)
+
+            df_display = df_art_tot.copy()
             columnas_multinivel = pd.MultiIndex.from_tuples([
                 ("Datos Operación", "Fecha"),
                 ("Datos Operación", "Concepto"),
@@ -745,35 +874,33 @@ elif menu == "4. Ficha de Stock PPP":
                 ("EXISTENCIAS", "$ PPP"),
                 ("EXISTENCIAS", "Total Valorizado")
             ])
-            
             df_display.columns = columnas_multinivel
 
             col_f1, col_f2 = st.columns([3, 1])
             col_f1.subheader(f"Ficha de Valuación: {art_sel}")
 
-            pdf_ficha = generar_pdf_tabla_generica(f"FICHA DE STOCK PPP: {art_sel}", df_art, orientacion="landscape")
+            pdf_ficha = generar_pdf_tabla_generica(f"FICHA DE STOCK PPP: {art_sel}", df_art_tot, orientacion="landscape")
             col_f2.download_button("📄 Exportar Ficha (PDF)", pdf_ficha, f"Ficha_PPP_{art_sel}.pdf", "application/pdf")
 
             st.dataframe(
                 df_display.style.format({
-                    ("ENTRADAS", "Cant."): "{:,.0f}",
-                    ("ENTRADAS", "P. Unitario"): "${:,.2f}",
-                    ("ENTRADAS", "Total"): "${:,.2f}",
-                    ("SALIDAS", "Cant."): "{:,.0f}",
-                    ("SALIDAS", "P. Unitario"): "${:,.2f}",
-                    ("SALIDAS", "Total"): "${:,.2f}",
-                    ("EXISTENCIAS", "Cant."): "{:,.0f}",
-                    ("EXISTENCIAS", "$ PPP"): "${:,.2f}",
-                    ("EXISTENCIAS", "Total Valorizado"): "${:,.2f}"
+                    ("ENTRADAS", "Cant."): lambda v: f"{v:,.0f}" if isinstance(v, (int, float)) and v != "" else str(v),
+                    ("ENTRADAS", "P. Unitario"): lambda v: f"${v:,.2f}" if isinstance(v, (int, float)) and v != "" else str(v),
+                    ("ENTRADAS", "Total"): lambda v: f"${v:,.2f}" if isinstance(v, (int, float)) and v != "" else str(v),
+                    ("SALIDAS", "Cant."): lambda v: f"{v:,.0f}" if isinstance(v, (int, float)) and v != "" else str(v),
+                    ("SALIDAS", "P. Unitario"): lambda v: f"${v:,.2f}" if isinstance(v, (int, float)) and v != "" else str(v),
+                    ("SALIDAS", "Total"): lambda v: f"${v:,.2f}" if isinstance(v, (int, float)) and v != "" else str(v),
+                    ("EXISTENCIAS", "Cant."): lambda v: f"{v:,.0f}" if isinstance(v, (int, float)) and v != "" else str(v),
+                    ("EXISTENCIAS", "$ PPP"): lambda v: f"${v:,.2f}" if isinstance(v, (int, float)) and v != "" else str(v),
+                    ("EXISTENCIAS", "Total Valorizado"): lambda v: f"${v:,.2f}" if isinstance(v, (int, float)) and v != "" else str(v)
                 }),
                 use_container_width=True
             )
 
-            ultimo_reg = df_art.iloc[-1]
             m1, m2, m3 = st.columns(3)
-            m1.metric("Stock Actual", f"{int(ultimo_reg['Saldo Cantidad'])} u.")
-            m2.metric("Precio Promedio Ponderado ($PPP)", f"${ultimo_reg['Saldo PPP']:,.2f}")
-            m3.metric("Valor Total del Inventario", f"${ultimo_reg['Saldo Total']:,.2f}")
+            m1.metric("Stock Actual", f"{int(tot_saldo_cant)} u.")
+            m2.metric("Precio Promedio Ponderado ($PPP)", f"${tot_saldo_ppp:,.2f}")
+            m3.metric("Valor Total del Inventario", f"${tot_saldo_monto:,.2f}")
     else:
         st.info("No hay artículos registrados con valuación de stock PPP.")
 
@@ -789,7 +916,6 @@ elif menu == "5. Sumas y Saldos":
         for cuenta in st.session_state.plan_cuentas:
             debe = 0.0
             haber = 0.0
-            # Solo computamos asientos normales/operativos para el balance previo
             for a in st.session_state.libro_diario:
                 if a.get("Tipo_Asiento", "Normal (Operativo)") != "Ajuste de Auditoría":
                     for r in a["Renglones"]:
@@ -811,19 +937,42 @@ elif menu == "5. Sumas y Saldos":
         if resumen:
             df_resumen = pd.DataFrame(resumen)
 
+            tot_s_debe = df_resumen["Sumas Debe"].sum()
+            tot_s_haber = df_resumen["Sumas Haber"].sum()
+            tot_sal_deu = df_resumen["Saldo Deudor"].sum()
+            tot_sal_acr = df_resumen["Saldo Acreedor"].sum()
+
+            df_resumen_tot = df_resumen.copy()
+            fila_tot = {
+                "Cuenta": "TOTALES",
+                "Sumas Debe": tot_s_debe,
+                "Sumas Haber": tot_s_haber,
+                "Saldo Deudor": tot_sal_deu,
+                "Saldo Acreedor": tot_sal_acr
+            }
+            df_resumen_tot = pd.concat([df_resumen_tot, pd.DataFrame([fila_tot])], ignore_index=True)
+
             col_b1, col_b2 = st.columns([3, 1])
             col_b1.subheader("Balance General de Comprobación")
 
-            pdf_balance = generar_pdf_tabla_generica("BALANCE DE COMPROBACION DE SUMAS Y SALDOS", df_resumen)
+            pdf_balance = generar_pdf_tabla_generica("BALANCE DE COMPROBACION DE SUMAS Y SALDOS", df_resumen_tot)
             col_b2.download_button("📄 Exportar Balance (PDF)", pdf_balance, "Balance_Sumas_y_Saldos.pdf", "application/pdf")
 
-            st.dataframe(df_resumen, use_container_width=True)
+            st.dataframe(
+                df_resumen_tot.style.format({
+                    "Sumas Debe": "${:,.2f}",
+                    "Sumas Haber": "${:,.2f}",
+                    "Saldo Deudor": "${:,.2f}",
+                    "Saldo Acreedor": "${:,.2f}"
+                }),
+                use_container_width=True
+            )
 
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Total Debe", f"${df_resumen['Sumas Debe'].sum():,.2f}")
-            c2.metric("Total Haber", f"${df_resumen['Sumas Haber'].sum():,.2f}")
-            c3.metric("Total Deudor", f"${df_resumen['Saldo Deudor'].sum():,.2f}")
-            c4.metric("Total Acreedor", f"${df_resumen['Saldo Acreedor'].sum():,.2f}")
+            c1.metric("Total Debe", f"${tot_s_debe:,.2f}")
+            c2.metric("Total Haber", f"${tot_s_haber:,.2f}")
+            c3.metric("Total Deudor", f"${tot_sal_deu:,.2f}")
+            c4.metric("Total Acreedor", f"${tot_sal_acr:,.2f}")
         else:
             st.info("Sin registros en operaciones ordinarias.")
     else:
@@ -860,7 +1009,6 @@ elif menu == "6. Auditoría y Prebalance (8 Columnas)":
                             else:
                                 a_haber += renglon["Monto"]
 
-            # Calculamos si la cuenta tuvo algún tipo de movimiento
             if (s_debe + s_haber + a_debe + a_haber) > 0:
                 saldo_orig = s_debe - s_haber
                 sal_or_deudor = saldo_orig if saldo_orig > 0 else 0.0
@@ -885,16 +1033,37 @@ elif menu == "6. Auditoría y Prebalance (8 Columnas)":
         if filas_prebalance:
             df_8col = pd.DataFrame(filas_prebalance)
 
-            # Preparar la tabla visual estructurada en 8 columnas
+            tot_s_debe = df_8col["1. Suma Debe"].sum()
+            tot_s_haber = df_8col["2. Suma Haber"].sum()
+            tot_sal_deu = df_8col["3. Saldo Deudor"].sum()
+            tot_sal_acr = df_8col["4. Saldo Acreedor"].sum()
+            tot_aj_debe = df_8col["5. Ajuste Debe"].sum()
+            tot_aj_haber = df_8col["6. Ajuste Haber"].sum()
+            tot_aj_sal_deu = df_8col["7. Saldo Ajustado Deudor"].sum()
+            tot_aj_sal_acr = df_8col["8. Saldo Ajustado Acreedor"].sum()
+
+            df_8col_tot = df_8col.copy()
+            fila_tot = {
+                "Cuenta": "TOTALES",
+                "1. Suma Debe": tot_s_debe,
+                "2. Suma Haber": tot_s_haber,
+                "3. Saldo Deudor": tot_sal_deu,
+                "4. Saldo Acreedor": tot_sal_acr,
+                "5. Ajuste Debe": tot_aj_debe,
+                "6. Ajuste Haber": tot_aj_haber,
+                "7. Saldo Ajustado Deudor": tot_aj_sal_deu,
+                "8. Saldo Ajustado Acreedor": tot_aj_sal_acr
+            }
+            df_8col_tot = pd.concat([df_8col_tot, pd.DataFrame([fila_tot])], ignore_index=True)
+
             col_a1, col_a2 = st.columns([3, 1])
             col_a1.subheader("📋 Prebalance de 8 Columnas")
 
-            pdf_8col = generar_pdf_tabla_generica("PREBALANCE DE AUDITORIA - 8 COLUMNAS", df_8col, orientacion="landscape")
+            pdf_8col = generar_pdf_tabla_generica("PREBALANCE DE AUDITORIA - 8 COLUMNAS", df_8col_tot, orientacion="landscape")
             col_a2.download_button("📄 Exportar Hoja 8 Col. (PDF)", pdf_8col, "Hoja_Trabajo_8_Columnas.pdf", "application/pdf")
 
-            # Formatear la visualización en pantalla de forma limpia
             st.dataframe(
-                df_8col.style.format({
+                df_8col_tot.style.format({
                     "1. Suma Debe": "${:,.2f}",
                     "2. Suma Haber": "${:,.2f}",
                     "3. Saldo Deudor": "${:,.2f}",
@@ -909,15 +1078,6 @@ elif menu == "6. Auditoría y Prebalance (8 Columnas)":
 
             st.divider()
             st.subheader("📊 Totales y Verificación de Cuadres")
-
-            tot_s_debe = df_8col["1. Suma Debe"].sum()
-            tot_s_haber = df_8col["2. Suma Haber"].sum()
-            tot_sal_deu = df_8col["3. Saldo Deudor"].sum()
-            tot_sal_acr = df_8col["4. Saldo Acreedor"].sum()
-            tot_aj_debe = df_8col["5. Ajuste Debe"].sum()
-            tot_aj_haber = df_8col["6. Ajuste Haber"].sum()
-            tot_aj_sal_deu = df_8col["7. Saldo Ajustado Deudor"].sum()
-            tot_aj_sal_acr = df_8col["8. Saldo Ajustado Acreedor"].sum()
 
             mc1, mc2, mc3, mc4 = st.columns(4)
             mc1.metric("Sumas Originales", f"${tot_s_debe:,.2f}", delta=f"Dif: ${tot_s_debe - tot_s_haber:,.2f}")
